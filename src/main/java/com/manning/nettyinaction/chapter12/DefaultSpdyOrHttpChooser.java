@@ -1,7 +1,11 @@
 package com.manning.nettyinaction.chapter12;
 
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandler;
-import io.netty.handler.codec.spdy.SpdyOrHttpChooser;
+import io.netty.channel.ChannelPipeline;
+import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.spdy.*;
+import io.netty.handler.ssl.ApplicationProtocolNegotiationHandler;
 import org.eclipse.jetty.npn.NextProtoNego;
 
 import javax.net.ssl.SSLEngine;
@@ -10,11 +14,17 @@ import javax.net.ssl.SSLEngine;
  * @author <a href="mailto:norman.maurer@googlemail.com">Norman Maurer</a>
  */
 public class DefaultSpdyOrHttpChooser extends SpdyOrHttpChooser {
+    private final int maxSpdyContentLength;
+    private final int maxHttpContentLength;
+
 
     public DefaultSpdyOrHttpChooser(int maxSpdyContentLength, int maxHttpContentLength) {
-        super(maxSpdyContentLength, maxHttpContentLength);
+        super();
+        this.maxSpdyContentLength = maxSpdyContentLength;
+        this.maxHttpContentLength = maxHttpContentLength;
     }
 
+/*
     @Override
     protected SelectedProtocol getProtocol(SSLEngine engine) {
         DefaultServerProvider provider = (DefaultServerProvider) NextProtoNego.get(engine);
@@ -31,14 +41,20 @@ public class DefaultSpdyOrHttpChooser extends SpdyOrHttpChooser {
                 return SelectedProtocol.UNKNOWN;
         }
     }
-
+*/
     @Override
-    protected ChannelInboundHandler createHttpRequestHandlerForHttp() {
-        return new HttpRequestHandler();
+    protected void configureSpdy(ChannelHandlerContext ctx, SpdyVersion version) throws Exception {
+        ChannelPipeline p = ctx.pipeline();
+        p.addLast(new SpdyFrameCodec(version));
+        p.addLast(new SpdySessionHandler(version, true));
+        p.addLast(new SpdyHttpEncoder(version));
+        p.addLast(new SpdyHttpDecoder(version, maxSpdyContentLength));
+        p.addLast(new SpdyHttpResponseStreamIdHandler());
     }
 
     @Override
-    protected ChannelInboundHandler createHttpRequestHandlerForSpdy() {
-        return new SpdyRequestHandler();
+    protected void configureHttp1(ChannelHandlerContext ctx) throws Exception {
+        ChannelPipeline p = ctx.pipeline();
+        p.addLast(new HttpServerCodec());
     }
 }
